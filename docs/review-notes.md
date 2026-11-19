@@ -30,3 +30,5 @@ PRごとに「このPRで見るべきだった観点」を1〜3行で追記し�
 - **WAL モードの DB は `.db` だけコピーしてもデータが揃わない** — バックアップするなら `-wal` / `-shm` も一緒に扱うか、`VACUUM INTO` / `.backup` を使う。
 - **パイプの後ろの `$?` は最後のコマンドの終了コード** — `cmd | head; echo $?` は `head` の結果。`set -o pipefail` を使うか、パイプせずに確認する。
 - **monorepo の Volta 設定は各 workspace に `extends` が必要** — 書かないと、サブディレクトリで別の Node バージョンが使われる。
+- **SQLite の `PRAGMA foreign_keys` はトランザクション内では無視される** — マイグレーションの SQL に `PRAGMA foreign_keys=OFF` と書いてあっても、migrator が BEGIN で包んでいると効かない。その状態で親テーブルを DROP すると、ON DELETE CASCADE で子テーブルがエラーなしで全件消える。（PR #3 のレビュー指摘。AI レビューの候補を実験で確認した）
+- **「怪しい」と思ったら、メモで終わらせず再現する** — 落ちるテストを先に書いて（Red）から直す（Green）。修正が本当に効いていることの証明になる。
