@@ -1,0 +1,4 @@
+# 機械が生成し、人間がレビューしないファイル。GitHub の PR 差分で自動的に畳まれる
+# （マイグレーションの .sql は DB に実際に流れるので、あえて対象外にしている）
+package-lock.json linguist-generated=true
+apps/api/drizzle/meta/** linguist-generated=true

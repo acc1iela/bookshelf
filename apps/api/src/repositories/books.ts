@@ -6,6 +6,7 @@ import type {
   ListBooksQuery,
   Reading,
   ReadingStatus,
+  UpdateBook,
 } from '@bookshelf/schema';
 import { type SQL, and, desc, eq, getTableColumns, getTableName, lt, sql } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
@@ -144,6 +145,32 @@ export function createBook(db: Db, input: CreateBook): CreateBookResult {
     if (isUniqueViolation(err)) return { ok: false, reason: 'isbn_conflict' };
     throw err;
   }
+}
+
+export type UpdateBookResult =
+  | { ok: true; book: Book }
+  | { ok: false; reason: 'not_found' | 'isbn_conflict' };
+
+export function updateBook(db: Db, id: string, input: UpdateBook): UpdateBookResult {
+  try {
+    // input に存在しないキーは SET 句に含まれない（= 変更しない）。null は NULL で上書きする
+    // updatedAt は schema の $onUpdateFn で自動更新される
+    const row = db.update(books).set(input).where(eq(books.id, id)).returning().get();
+    if (!row) return { ok: false, reason: 'not_found' };
+    return { ok: true, book: toBook(row) };
+  } catch (err) {
+    if (isUniqueViolation(err)) return { ok: false, reason: 'isbn_conflict' };
+    throw err;
+  }
+}
+
+/**
+ * 本を削除する。紐づく readings は ON DELETE CASCADE で消える（PRAGMA foreign_keys = ON が前提）。
+ * @returns 削除したら true、存在しなければ false
+ */
+export function deleteBook(db: Db, id: string): boolean {
+  const result = db.delete(books).where(eq(books.id, id)).run();
+  return result.changes > 0;
 }
 
 /** better-sqlite3 の一意制約エラーか（Drizzle がラップしている場合は cause を辿る） */
