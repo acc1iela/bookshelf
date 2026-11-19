@@ -199,6 +199,9 @@ ORDER BY COALESCE(started_on, date(created_at)) DESC, created_at DESC
   - `null` → 値を消す
   - 値あり → 上書き
 - 例: `PATCH /books/01JD... { "publisher": null }` → publisher を消す。title は変更しない。
+- `title` と `authors` は必須項目なので `null` を送れない（422）。`authors` を空にしたいときは `[]` を送る。
+- 未知のキーは無視する。ただし、無視した結果ボディが空になった場合は 422 を返す（`{"titel": "x"}` のような typo を黙って成功させないため）。
+- 成功時は更新後の Book を 200 で返す。
 
 ### 冪等性
 

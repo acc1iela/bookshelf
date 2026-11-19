@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "volta": {
+    "extends": "../../package.json"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",

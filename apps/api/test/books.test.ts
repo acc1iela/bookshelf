@@ -1,6 +1,6 @@
 import type { Book, BookDetail, BookList, Problem } from '@bookshelf/schema';
 import { ulid } from 'ulidx';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app';
 import { type Db, createDb } from '../src/db/client';
 import { readings } from '../src/db/schema';
@@ -182,6 +182,100 @@ describe('GET /api/books/:id', () => {
 
     expect(res.status).toBe(404);
     expect(res.headers.get('Content-Type')).toBe('application/problem+json');
+  });
+});
+
+function patchBook(id: string, body: unknown) {
+  return app.request(`/api/books/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('PATCH /api/books/:id', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('送ったキーだけ更新し、送らなかったキーは変更しない', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-01T00:00:00.000Z'));
+    const book = await createBook({ title: '旧題', publisher: '講談社', pageCount: 300 });
+
+    vi.setSystemTime(new Date('2026-11-19T00:00:00.000Z'));
+    const res = await patchBook(book.id, { title: '新題' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      title: '新題',
+      publisher: '講談社', // null で上書きされていない
+      pageCount: 300,
+      createdAt: '2026-11-01T00:00:00.000Z',
+      updatedAt: '2026-11-19T00:00:00.000Z',
+    });
+  });
+
+  it('null を送るとその値を消す', async () => {
+    const book = await createBook({ title: 'A', publisher: '講談社', isbn: '9784062748681' });
+
+    const res = await patchBook(book.id, { publisher: null, isbn: null });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ title: 'A', publisher: null, isbn: null });
+  });
+
+  it.each([
+    ['title を null にする', { title: null }, 'title'],
+    ['authors を null にする', { authors: null }, 'authors'],
+    ['空のボディ', {}, ''],
+    ['未知のキーだけ（typo）', { titel: '新題' }, ''],
+  ])('%s → 422', async (_label, body, path) => {
+    const book = await createBook({ title: 'A' });
+
+    const res = await patchBook(book.id, body);
+
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as Problem).errors?.map((e) => e.path)).toEqual([path]);
+  });
+
+  it('存在しない本は 404', async () => {
+    const res = await patchBook(ulid(), { title: 'x' });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('ほかの本と同じ ISBN にすると 409、自分と同じ ISBN なら 200', async () => {
+    await createBook({ title: 'A', isbn: '9784062748681' });
+    const b = await createBook({ title: 'B', isbn: '9784101001616' });
+
+    expect((await patchBook(b.id, { isbn: '9784062748681' })).status).toBe(409);
+    expect((await patchBook(b.id, { isbn: '9784101001616' })).status).toBe(200);
+  });
+});
+
+describe('DELETE /api/books/:id', () => {
+  it('204 を返し、以降の GET と2回目の DELETE は 404', async () => {
+    const book = await createBook({ title: 'A' });
+
+    const res = await app.request(`/api/books/${book.id}`, { method: 'DELETE' });
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+
+    expect((await app.request(`/api/books/${book.id}`)).status).toBe(404);
+    expect((await app.request(`/api/books/${book.id}`, { method: 'DELETE' })).status).toBe(404);
+  });
+
+  it('紐づく readings も削除する（ON DELETE CASCADE が効いている）', async () => {
+    const a = await createBook({ title: 'A' });
+    const b = await createBook({ title: 'B' });
+    addReading(a.id, { status: 'done', createdAt: '2026-01-01T00:00:00.000Z' });
+    addReading(b.id, { status: 'want', createdAt: '2026-01-01T00:00:00.000Z' });
+
+    await app.request(`/api/books/${a.id}`, { method: 'DELETE' });
+
+    const remaining = db.select().from(readings).all();
+    expect(remaining.map((r) => r.bookId)).toEqual([b.id]);
   });
 });
 
